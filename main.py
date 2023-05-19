@@ -2,6 +2,8 @@ import os
 import tkinter as tk
 import tkinter.ttk as ttk
 import xml.etree.ElementTree as ET
+from mtranslate import translate
+import shutil
 
 
 class Application(tk.Frame):
@@ -68,10 +70,10 @@ class Application(tk.Frame):
         self.text_maxRow = tk.Label(self.menu_canvas, text="0")
         self.text_maxRow.grid(row=0, column=5)
 
-        self.button_next = tk.Button(self.menu_canvas, text=">>>", command=self.display_treeview)
+        self.button_next = tk.Button(self.menu_canvas, text=">>>", command=self.get_next_row)
         self.button_next.grid(row=1, column=5)
 
-        self.button_prev = tk.Button(self.menu_canvas, text="<<<", command=self.display_treeview)
+        self.button_prev = tk.Button(self.menu_canvas, text="<<<", command=self.get_prev_row)
         self.button_prev.grid(row=1, column=3)
 
         self.originText_convas = tk.Canvas(self.right_canvas)
@@ -89,6 +91,27 @@ class Application(tk.Frame):
         self.perevText_entry = tk.Text(self.originText_convas, height=10)
         self.perevText_entry.pack(fill=tk.BOTH)
 
+        self.foot_menu = tk.Canvas(self.right_canvas)
+        self.foot_menu.pack(fill=tk.BOTH)
+
+        self.label_pl0 = tk.Label(self.foot_menu, text="    ")
+        self.label_pl0.grid(row=0, column=0)
+
+        self.getTransButton = tk.Button(self.foot_menu, text="Перевести", command=self.translate_text)
+        self.getTransButton.grid(row=1, column=0)
+
+        self.label_pl1 = tk.Label(self.foot_menu, text="    ")
+        self.label_pl1.grid(row=1, column=1)
+
+        self.writeTransButton = tk.Button(self.foot_menu, text="Записать перевод", command=self.edit_text)
+        self.writeTransButton.grid(row=1, column=2)
+
+        self.label_pl2 = tk.Label(self.foot_menu, text="    ")
+        self.label_pl2.grid(row=1, column=3)
+
+        self.becapTransButton = tk.Button(self.foot_menu, text="Сделать бекап файла", command=self.copy_xml_file)
+        self.becapTransButton.grid(row=1, column=4)
+
     def input_text(self):
         self.input_field.delete(0, 'end')
         self.input_field.insert(tk.INSERT, root.clipboard_get())
@@ -98,7 +121,7 @@ class Application(tk.Frame):
         self.treeview.delete(*self.treeview.get_children())
         for entry in os.listdir(path):
             entry_path = os.path.join(path, entry)
-            node = self.treeview.insert("", tk.END, text=entry, open=False)
+            node = self.treeview.insert("", tk.END, text=entry, open=True)
             if os.path.isdir(entry_path):
                 for subentry in os.listdir(entry_path):
                     self.treeview.insert(node, tk.END, text=subentry)
@@ -116,15 +139,74 @@ class Application(tk.Frame):
         # print(count_xml_lines(mem_path))
         get_xml = count_xml_lines(mem_path)
         self.text_maxRow.configure(text=get_xml[0])
+        self.text_tecRow.configure(text="0")
 
         self.originText_entry.delete(1.0, 'end')
         self.originText_entry.insert(tk.INSERT, get_xml[1])
 
     def get_next_row(self):
         xml_path = self.input_field_name.get()
+        self.perevText_entry.delete(1.0, 'end')
         xml_tree = ET.parse(xml_path)
         xml_root = xml_tree.getroot()
-        next_row = self.text_tecRow
+
+        max_row = self.text_maxRow.cget("text")
+        if int(self.text_tecRow.cget("text"))+1 <= max_row:
+            next_row = int(self.text_tecRow.cget("text")) + 1
+        else:
+            next_row = int(self.text_tecRow.cget("text"))
+
+        self.text_tecRow.configure(text=next_row)
+        self.originText_entry.delete(1.0, 'end')
+        self.originText_entry.insert(tk.INSERT, list(xml_root.iter())[next_row].text)
+
+    def get_prev_row(self):
+        xml_path = self.input_field_name.get()
+        self.perevText_entry.delete(1.0, 'end')
+        xml_tree = ET.parse(xml_path)
+        xml_root = xml_tree.getroot()
+
+        if 0 <= int(self.text_tecRow.cget("text"))-1:
+            next_row = int(self.text_tecRow.cget("text")) - 1
+        else:
+            next_row = int(self.text_tecRow.cget("text"))
+
+        self.text_tecRow.configure(text=next_row)
+        self.originText_entry.delete(1.0, 'end')
+        self.originText_entry.insert(tk.INSERT, list(xml_root.iter())[next_row].text)
+
+    def edit_text(self):
+        xml_path = self.input_field_name.get()
+        number = int(self.text_tecRow.cget("text"))
+
+        xml_tree = ET.parse(xml_path)
+        xml_root = xml_tree.getroot()
+
+        edit_element = xml_root[number-1]
+
+        # Создать новый элемент и установить его текст непосредственно
+        new_element = ET.Element(edit_element.tag)
+        new_element.text = str(self.perevText_entry.get("1.0", "end-1c"))
+
+        # Заменить старый элемент на новый
+        xml_root[number - 1] = new_element
+        xml_tree.write(xml_path)
+
+    def copy_xml_file(self):
+        file_path = self.input_field_name.get()
+        # получаем имя файла и путь к нему без расширения
+        file_name, file_ext = os.path.splitext(os.path.basename(file_path))
+        new_file_name = "{}_copy{}".format(file_name, file_ext)
+        # создаем копию файла
+        shutil.copy(file_path, os.path.join(os.path.dirname(file_path), new_file_name))
+
+    def translate_text(self):
+        text = self.originText_entry.get("1.0", "end-1c")
+        print(text)
+
+        result = translate(text, 'ru')
+        self.perevText_entry.delete(1.0, 'end')
+        self.perevText_entry.insert(tk.INSERT, result)
 
 def count_xml_lines(filepath):
     with open(filepath, "r", encoding='utf-8-sig') as file:
@@ -133,7 +215,7 @@ def count_xml_lines(filepath):
 
         # print(list(xml_root.iter()))
 
-        return len(list(xml_root.iter())), list(xml_root.iter())[0].text
+        return len(list(xml_root.iter()))-1, list(xml_root.iter())[0].text
 
 
 def get_xml_line_text(file_path, line_number):
